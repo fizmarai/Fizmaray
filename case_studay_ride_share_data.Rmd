@@ -1,0 +1,149 @@
+---
+title: "case_study_ride_share_data"
+author: "Furugh"
+date: "5/28/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Setting Up The Analysis
+note: setting up the R environment for analysis by loading the data, and required packages.
+```{r loading pachages}
+
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+
+```
+### Step 1: collect the data
+```{r loading 4 files of data}
+
+q1_2022<- read_csv("Desktop/Google Capstone/Case Study 1/JAn/202201-divvy-tripdata.csv")
+q2_2022<- read_csv("Desktop/Google Capstone/Case Study 1/Feb/202202-divvy-tripdata.csv")
+q3_2022<- read_csv("Desktop/Google Capstone/Case Study 1/March/202203-divvy-tripdata.csv")
+q4_2022<- read_csv("Desktop/Google Capstone/Case Study 1/Apr/202204-divvy-tripdata 2.csv")
+```
+
+### STEP 2: WRANGLE DATA AND COMBINE INTO A SINGLE FILE
+```{r}
+q1_2022<- mutate(q1_2022, ride_id = as.character(ride_id)
+                 ,rideable_type = as.character(rideable_type))
+q2_2022<-mutate(q2_2022, ride_id = as.character(ride_id)
+                ,rideable_type = as.character(rideable_type))
+q2_2022<-mutate(q3_2022, ride_id = as.character(ride_id)
+                ,rideable_type = as.character(rideable_type))
+q2_2022<-mutate(q4_2022, ride_id = as.character(ride_id)
+                ,rideable_type = as.character(rideable_type))
+  
+all_trips<- bind_rows(q1_2022,q2_2022, q3_2022, q4_2022)
+
+all_trips <- all_trips %>% 
+  select(-c(start_lat, start_lng, end_lat, end_lng))
+```
+
+### STEP 3: CLEAN UP AND ADD DATA TO PREPARE FOR ANALYSIS
+
+```{r For consistancy, changing some costumer type names. And adding date columns}
+all_trips <-  all_trips %>% 
+  mutate(member_casual = recode(member_casual
+                                ,"Subscriber" = "member"
+                                ,"Customer" = "casual"))
+
+table(all_trips$member_casual)
+
+all_trips$date <- as.Date(all_trips$started_at)
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+```
+
+```{r Adding a ride lengh calculation }
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+
+is.factor(all_trips$ride_length)
+is.numeric(all_trips$ride_length)
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+is.numeric(all_trips$ride_length)
+```
+
+### Removing bad data
+
+```{r Removing NAs and unrequired data }
+all_trips_v2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0 | all_trips$member_casual == "NA"),]
+all_trips_v2 <- na.omit(all_trips_v2)
+```
+
+### STEP 4: CONDUCT DESCRIPTIVE ANALYSIS
+
+```{r Descriptive analysis on ride_length all figures in seconds mean values and other statistics, and distribution of ride durtaion around mean}
+
+
+all_trips_v2 %>% 
+  group_by(day_of_week) %>% 
+  summarise(mean_per_day = mean(ride_length))
+
+sd(all_trips_v2$ride_length)
+mean(all_trips_v2$ride_length)
+median(all_trips_v2$ride_length)
+range(all_trips_v2$ride_length)
+max(all_trips_v2$ride_length) 
+min(all_trips_v2$ride_length) 
+
+
+hist(table(all_trips_v2$ride_length), breaks = 10, col = "gray",  xlab = "Histogram with Normal Curve",
+     main = "Trips Duration Distribution") %>%
+  abline(v = mean(all_trips_v2$ride_length) , col = "blue")
+```
+
+```{r Compareing members and casual users by simple statistics}
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = median)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = max)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = min)
+
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week,
+                                  levels=c("Sunday", "Monday", "Tuesday", 
+                                           "Wednesday", "Thursday", "Friday", "Saturday"))
+
+  
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+
+
+
+```{r analyze ridership data by type and weekday}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>%
+  arrange(member_casual, weekday)	
+```
+
+```{r  visualizing the number of rides by rider type}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+
+
+
+```
+
+```{r}
+all_trips_v2 %>%
+  group_by(member_casual) %>%
+  summarise(number_of_rides = n()) %>%
+  ggplot(aes(x = member_casual, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
+```{r  creatting a visualization for average duration}
+all_trips_v2 %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  ggplot(aes(x = day_of_week, y = average_duration, fill = member_casual)) +
+  geom_col(position =  "dodge")
